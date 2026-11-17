@@ -1359,6 +1359,34 @@ function promoIsActive(p){
   if(end!==null&&now>end)return false;
   return true;
 }
+// Automatically refresh the promotion UI at the next local start/end boundary.
+// This makes the promo banner and discounted prices update without a manual refresh.
+let promoBoundaryTimer = null;
+function schedulePromotionBoundary(){
+  if(promoBoundaryTimer!==null){
+    clearTimeout(promoBoundaryTimer);
+    promoBoundaryTimer=null;
+  }
+  const promo=SET?.promotion;
+  if(!promo)return;
+  const now=Date.now();
+  const startRaw=String(promo.startsAt||'').trim();
+  const endRaw=String(promo.endsAt||'').trim();
+  const boundaries=[
+    startRaw?promoLocalTimestamp(startRaw):NaN,
+    endRaw?promoLocalTimestamp(endRaw):NaN
+  ].filter(ts=>Number.isFinite(ts)&&ts>now).sort((a,b)=>a-b);
+  if(!boundaries.length)return;
+  // setTimeout is capped at about 24.8 days; long windows are re-checked in chunks.
+  const delay=Math.min(Math.max(boundaries[0]-now+100,100),2147480000);
+  promoBoundaryTimer=setTimeout(()=>{
+    const savedX=window.scrollX;
+    const savedY=window.scrollY;
+    route();
+    requestAnimationFrame(()=>window.scrollTo(savedX,savedY));
+  },delay);
+}
+
 function basePrice(p,t){const v=p?.plans?.[t.id]?.price;return v!==''&&v!=null&&Number.isFinite(Number(v))?Number(v):Number(t.price)||0}
 function effectivePrice(p,t){
   const base=basePrice(p,t),cfg=p?.plans?.[t.id]||{};
@@ -2429,6 +2457,7 @@ function route(){
   window.scrollTo(0,0);
   if(pd) applyPlan(D.plan);
   initCoverflow(); initReviews();
+  schedulePromotionBoundary();
 }
 window.DigitalHaus={update(d){applyData(d);route()},get data(){return{settings:SET,styles:STYLES,products:PRODUCTS,tiers:TIERS}}};
 window.addEventListener('hashchange',route);
